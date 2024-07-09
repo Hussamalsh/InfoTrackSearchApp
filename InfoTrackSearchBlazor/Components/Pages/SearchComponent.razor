@@ -1,0 +1,156 @@
+﻿@page "/"
+<PageTitle>Home</PageTitle>
+
+@using InfoTrackSearchBlazor.Services
+
+@inject ISearchService SearchService
+@inject IHttpClientFactory HttpClientFactory
+@inject ILogger<SearchComponent> Logger
+
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h2>SEO Keyword Search</h2>
+                </div>
+                <div class="card-body">
+                    <EditForm Model="@searchRequest" OnValidSubmit="@HandleValidSubmit" FormName="searchForm" class="needs-validation" novalidate>
+                        <DataAnnotationsValidator />
+                        <ValidationSummary class="text-danger" />
+
+                        <div class="mb-3">
+                            <label for="keyword" class="form-label">Keyword:</label>
+                            <InputText id="keyword" class="form-control" @bind-Value="searchRequest.Keyword" placeholder="Keyword" required />
+                            <ValidationMessage For="@(() => searchRequest.Keyword)" class="text-danger" />
+                        </div>
+                        <div class="mb-3">
+                            <label for="url" class="form-label">URL:</label>
+                            <InputText id="url" class="form-control" @bind-Value="searchRequest.Url" placeholder="URL" required />
+                            <ValidationMessage For="@(() => searchRequest.Url)" class="text-danger" />
+                        </div>
+
+                        <button type="submit" class="btn btn-primary" disabled="@isSearching">
+                            @if (isSearching)
+                            {
+                                <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                <span class="visually-hidden">Searching...</span>
+                            }
+                            else
+                            {
+                                <span>Search</span>
+                            }
+                        </button>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (isSearching)
+    {
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="progress">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 100%"></div>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (searchResult is not null)
+    {
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="alert alert-info" role="alert">
+                    <h4 class="alert-heading">Search Results</h4>
+                    <p>Positions: @string.Join(", ", searchResult.Positions)</p>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (searchHistory is { Count: > 0 })
+    {
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Search History</h3>
+                    </div>
+                    <div class="card-body">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Date</th>
+                                    <th scope="col">Keyword</th>
+                                    <th scope="col">URL</th>
+                                    <th scope="col">Positions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var historyItem in searchHistory)
+                                {
+                                    <tr>
+                                        <td>@historyItem.SearchDate.ToString("g")</td>
+                                        <td>@searchRequest.Keyword</td>
+                                        <td>@searchRequest.Url</td>
+                                        <td>@string.Join(", ", historyItem.Positions)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code
+{
+    [SupplyParameterFromForm]
+    private SearchRequest? searchRequest { get; set; }
+
+    private SearchResult? searchResult;
+    private List<SearchResult>? searchHistory;
+    private bool isSearching;
+    
+    protected override void OnInitialized() => searchRequest ??= new();
+
+    private async Task HandleValidSubmit()
+    {
+        isSearching = true;
+        searchResult = null;
+        searchHistory = null;
+
+        try
+        {
+            searchResult = await SearchService.PerformSearchAsync(searchRequest);
+            await LoadSearchHistory();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "An error occurred while processing the search request.");
+            searchResult = new SearchResult { Positions = new List<int> { 0 } };
+        }
+        finally
+        {
+            isSearching = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadSearchHistory()
+    {
+        try
+        {
+            searchHistory = await SearchService.GetSearchHistoryAsync(searchRequest.Keyword, searchRequest.Url);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "An error occurred while loading the search history.");
+            searchHistory = new List<SearchResult>();
+        }
+    }
+}
